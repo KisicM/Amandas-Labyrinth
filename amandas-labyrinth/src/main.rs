@@ -1,7 +1,9 @@
+//Mihajlo Kisic E259/2022
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::fmt;
+use rand::Rng;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Direction {
@@ -23,14 +25,12 @@ impl fmt::Display for Direction {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct AvailablePath {
     direction: Direction,
     has_door: bool
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct Field {
     index: i32,
     has_key: bool,
@@ -40,17 +40,21 @@ struct Field {
 
 impl Field {
     fn print(&self) {
-        println!("Field index: {},\nhas_key: {},\nis_exit: {},\n{:#?}", self.index, self.has_key, self.is_exit, self.available_paths);
+        println!("Field index: {},\nis_exit: {}\n", self.index, self.is_exit);
     }       
 }
 
 fn main() {
-    let mut _steps: i32 = 0;
-    let mut _keys: i32 = 0;
-    let mut _exit: bool = false;
+    let mut steps: i32 = 0;
+    let mut keys: i32 = 0;
     let mut labyrinth : Vec<Field> = vec![];
     let mut exit_fields: Vec<Field> = vec![];
-    let mut current_field: Option<Field> = None;
+    let mut current_field: Field = Field {
+        index: 0,
+        has_key: false,
+        is_exit: false,
+        available_paths: Default::default()
+    };
 
     //File hosts must exist in current path before this produces output
     if let Ok(lines) = read_lines("./labyrinth.txt") {
@@ -81,12 +85,24 @@ fn main() {
             }
         }
     }
-    //print!("{:#?}", labyrinth);
-    current_field = Some(labyrinth[0].clone());
-    //print!("{:#?}, vector len: {}\n", current_field, labyrinth.len());
-    let surrounding_fields = get_surrounding_fields(&labyrinth, current_field.unwrap());
-    println!("{:#?}", surrounding_fields);
-    
+
+    current_field = labyrinth[0].clone();
+
+    while !current_field.is_exit {
+        current_field.print();
+        keys = pick_key_up(&mut labyrinth, &mut current_field, keys);
+        keys = unlock_door(&mut labyrinth, &mut current_field, keys);
+        let mut surrounding_fields = get_surrounding_fields(labyrinth.clone(), current_field.clone());
+        for (i, path) in current_field.available_paths.into_iter().enumerate() {
+            if path.has_door {
+                surrounding_fields.swap_remove(i);
+            }
+        }
+        current_field = surrounding_fields[rand::thread_rng().gen_range(0..surrounding_fields.len())].clone();
+        steps += 1;
+        println!("Step number: {}", steps);
+    }
+    current_field.print();
 
     
 }
@@ -118,8 +134,8 @@ fn get_available_paths(paths: &str, doors: &str) -> Box<[AvailablePath]> {
     return available_paths.into_boxed_slice();
 }
 
-fn get_surrounding_fields(labyrinth : &Vec<Field>, current_field: Field) -> Vec<&Field> {
-    let mut surrounding_fields: Vec<&Field> = vec![];
+fn get_surrounding_fields(labyrinth : Vec<Field>, current_field: Field) -> Vec<Field> {
+    let mut surrounding_fields: Vec<Field> = vec![];
     let available_paths = current_field.available_paths;
     for path in available_paths.into_iter() {
         let field_index: i32;
@@ -138,7 +154,7 @@ fn get_surrounding_fields(labyrinth : &Vec<Field>, current_field: Field) -> Vec<
             }
         }
         if field_index >= 0 && field_index <= 53 {
-            for field in labyrinth {
+            for field in labyrinth.clone() {
                 if field.index == field_index {
                     surrounding_fields.push(field);
                 }
@@ -146,4 +162,39 @@ fn get_surrounding_fields(labyrinth : &Vec<Field>, current_field: Field) -> Vec<
         }
     }
     return surrounding_fields;
+}
+
+fn unlock_door(labyrinth : &mut Vec<Field>, current_field: &mut Field, mut keys: i32) -> i32 {
+    if keys == 0 {
+        return keys
+    }
+
+    for (i, path) in current_field.available_paths.into_iter().enumerate() {
+        if keys != 0 && path.has_door{
+            labyrinth[current_field.index as usize].available_paths[i].has_door = false;
+            keys -= 1;
+        }
+    }
+    //update current_field
+    for field in labyrinth {
+        if field.index == current_field.index {
+            current_field.available_paths = field.available_paths.clone();
+        }
+    }
+
+    keys
+}
+
+fn pick_key_up(labyrinth : &mut Vec<Field>, current_field: &mut Field, mut keys: i32) -> i32 {
+    if current_field.has_key {
+        labyrinth[current_field.index as usize].has_key = false;
+        keys += 1;
+    }
+    //update current_field
+    for field in labyrinth {
+        if field.index == current_field.index {
+            current_field.has_key = field.has_key;
+        }
+    }
+    keys
 }
