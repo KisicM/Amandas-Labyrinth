@@ -1,9 +1,10 @@
 //Mihajlo Kisic E259/2022
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::fmt;
-use rand::Rng;
+//use rand::Rng;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Direction {
@@ -45,16 +46,16 @@ impl Field {
 }
 
 fn main() {
-    let mut steps: i32 = 0;
-    let mut keys: i32 = 0;
+    //let mut steps: i32 = 0;
+    //let mut keys: i32 = 0;
     let mut labyrinth : Vec<Field> = vec![];
     let mut exit_fields: Vec<Field> = vec![];
-    let mut current_field: Field = Field {
-        index: 0,
-        has_key: false,
-        is_exit: false,
-        available_paths: Default::default()
-    };
+    // let mut current_field: Field = Field {
+    //     index: 0,
+    //     has_key: false,
+    //     is_exit: false,
+    //     available_paths: Default::default()
+    // };
 
     //File hosts must exist in current path before this produces output
     if let Ok(lines) = read_lines("./labyrinth.txt") {
@@ -86,34 +87,108 @@ fn main() {
         }
     }
 
-    current_field = labyrinth[0].clone();
+    //current_field = labyrinth[0].clone();
 
-    while !current_field.is_exit {
-        current_field.print();
-        keys = pick_key_up(&mut labyrinth, &mut current_field, keys);
-        keys = unlock_door(&mut labyrinth, &mut current_field, keys);
-        let mut surrounding_fields = get_surrounding_fields(labyrinth.clone(), current_field.clone());
-        for (i, path) in current_field.available_paths.into_iter().enumerate() {
-            if path.has_door {
-                surrounding_fields.swap_remove(i);
-            }
+    let mut adj_list: Vec<Vec<usize>> = vec![];
+    for field in labyrinth.clone().into_iter() {
+        let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field);
+        let mut array_of_indexes = vec![];
+        for neighbour in surrounding_fields.into_iter() {
+            array_of_indexes.push(neighbour.index as usize)
         }
-        current_field = surrounding_fields[rand::thread_rng().gen_range(0..surrounding_fields.len())].clone();
-        steps += 1;
-        println!("Step number: {}", steps);
+        adj_list.push(array_of_indexes);
     }
-    current_field.print();
+
+    let mut shortest_paths = vec![];
+    for exit in exit_fields.into_iter() {
+        shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth))
+    }
+    print!("{:#?}", shortest_paths);
+    // while !current_field.is_exit {
+    //     current_field.print();
+    //     keys = pick_key_up(&mut labyrinth, &mut current_field, keys);
+    //     keys = unlock_door(&mut labyrinth, &mut current_field, keys);
+    //     let mut surrounding_fields = get_surrounding_fields(labyrinth.clone(), current_field.clone());
+    //     for (i, path) in current_field.available_paths.into_iter().enumerate() {
+    //         if path.has_door {
+    //             surrounding_fields.swap_remove(i);
+    //         }
+    //     }
+    //     current_field = surrounding_fields[rand::thread_rng().gen_range(0..surrounding_fields.len())].clone();
+    //     steps += 1;
+    //     println!("Step number: {}", steps);
+    // }
+    // current_field.print();
 
     
 }
 
-// The output is wrapped in a Result to allow matching on errors
-// Returns an Iterator to the Reader of the lines of the file.
+fn bfs(start: usize, end: usize, adj_list: &Vec<Vec<usize>>, labyrinth : &mut Vec<Field>) -> Option<(Vec<usize>, usize)> {
+    let mut visited = vec![false; adj_list.len()];
+    let mut queue = VecDeque::new();
+    let mut distances = vec![std::usize::MAX; adj_list.len()];
+    let mut paths = vec![vec![]; adj_list.len()];
+
+    visited[start] = true;
+    queue.push_back(start);
+    distances[start] = 0;
+    paths[start] = vec![start];
+    let mut keys = 0;
+
+    while let Some(vertex) = queue.pop_front() {
+        println!("Vertex {}", vertex);
+        let mut current_field = labyrinth[vertex].clone();
+        let surrounding_fields = get_surrounding_fields(labyrinth.clone(), current_field.clone());
+        let mut available_neighbors: Vec<usize> = vec![];
+        let mut fields_with_doors: Vec<i32> = vec![];
+
+        keys = pick_key_up(labyrinth, &mut current_field, keys);
+        keys = unlock_door(labyrinth, &mut current_field, keys);
+
+        for (i, path) in current_field.available_paths.into_iter().enumerate() {
+            if path.has_door {
+                fields_with_doors.push(surrounding_fields[i].index)
+            }
+        }
+        if fields_with_doors.len() != 0 {
+            for index in adj_list[vertex].clone().into_iter() {
+                for field_index in fields_with_doors.clone() {
+                    if field_index != index as i32 {
+                        available_neighbors.push(index);
+                    }
+                }
+            }
+        } else {
+            available_neighbors = adj_list[vertex].clone()
+        }
+        // println!("{:#?}", current_field);
+        // println!("{:?}", available_neighbors);
+        for &neighbor in &available_neighbors {
+            if !visited[neighbor] {
+                println!("VISITED {}", neighbor);
+                visited[neighbor] = true;
+                distances[neighbor] = distances[vertex] + 1;
+                paths[neighbor] = paths[vertex].clone();
+                paths[neighbor].push(neighbor);
+                queue.push_back(neighbor);
+
+                if neighbor == end {
+                    return Some((paths[end].clone(), distances[end]));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
 where P: AsRef<Path>, {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
+
 
 fn get_available_paths(paths: &str, doors: &str) -> Box<[AvailablePath]> {
     let mut available_paths = vec![];
