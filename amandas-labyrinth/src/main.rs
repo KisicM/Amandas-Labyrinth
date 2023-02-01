@@ -89,19 +89,31 @@ fn main() {
 
     //current_field = labyrinth[0].clone();
 
-    let mut adj_list: Vec<Vec<usize>> = vec![];
+    //let mut adj_list: Vec<Vec<usize>> = vec![];
+    // for field in labyrinth.clone().into_iter() {
+    //     let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field);
+    //     let mut array_of_indexes = vec![];
+    //     for neighbour in surrounding_fields.into_iter() {
+    //         array_of_indexes.push(neighbour.index as usize)
+    //     }
+    //     adj_list.push(array_of_indexes);
+    // }
+
+    let mut graph: HashMap<usize, Vec<usize>> = HashMap::new();
+
     for field in labyrinth.clone().into_iter() {
-        let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field);
+        let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field.clone());
         let mut array_of_indexes = vec![];
         for neighbour in surrounding_fields.into_iter() {
             array_of_indexes.push(neighbour.index as usize)
         }
-        adj_list.push(array_of_indexes);
+        graph.insert(field.index as usize, array_of_indexes);
     }
 
     let mut shortest_paths = vec![];
     for exit in exit_fields.into_iter() {
-        shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth))
+        //shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth))
+        shortest_paths.push(bfs_dynamic(&mut graph, labyrinth[0].index as usize, exit.index as usize))
     }
     print!("{:#?}", shortest_paths);
     // while !current_field.is_exit {
@@ -273,3 +285,52 @@ fn pick_key_up(labyrinth : &mut Vec<Field>, current_field: &mut Field, mut keys:
     }
     keys
 }
+
+
+use std::collections::{HashMap};
+
+enum State {
+    Visited,
+    Unvisited,
+}
+
+fn bfs_dynamic(graph: &mut HashMap<usize, Vec<usize>>, start: usize, end: usize) -> Option<(usize, Vec<usize>)> {
+    let mut distances = HashMap::new();
+    let mut parents = HashMap::new();
+    let mut queue = VecDeque::new();
+    let mut state = HashMap::new();
+
+    distances.insert(start, 0);
+    queue.push_back(start);
+    state.insert(start, State::Visited);
+
+    while !queue.is_empty() {
+        let vertex = queue.pop_front().unwrap();
+        if let Some(neighbors) = graph.get_mut(&vertex) {
+            for neighbor in neighbors {
+                if let Some(dist) = distances.get(&vertex) {
+                    if !distances.contains_key(&neighbor) {
+                        distances.insert(neighbor.clone(), dist + 1);
+                        parents.insert(neighbor.clone(), vertex);
+                        state.insert(neighbor.clone(), State::Visited);
+                        queue.push_back(neighbor.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut current = end;
+    let mut path = vec![end];
+    while current != start {
+        current = match parents.get(&current) {
+            Some(p) => *p,
+            None => return None,
+        };
+        path.push(current);
+    }
+    path.reverse();
+
+    Some((distances[&end], path))
+}
+
