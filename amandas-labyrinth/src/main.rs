@@ -46,16 +46,8 @@ impl Field {
 }
 
 fn main() {
-    //let mut steps: i32 = 0;
-    //let mut keys: i32 = 0;
     let mut labyrinth : Vec<Field> = vec![];
     let mut exit_fields: Vec<Field> = vec![];
-    // let mut current_field: Field = Field {
-    //     index: 0,
-    //     has_key: false,
-    //     is_exit: false,
-    //     available_paths: Default::default()
-    // };
 
     //File hosts must exist in current path before this produces output
     if let Ok(lines) = read_lines("./labyrinth.txt") {
@@ -89,33 +81,43 @@ fn main() {
 
     //current_field = labyrinth[0].clone();
 
-    //let mut adj_list: Vec<Vec<usize>> = vec![];
-    // for field in labyrinth.clone().into_iter() {
-    //     let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field);
-    //     let mut array_of_indexes = vec![];
-    //     for neighbour in surrounding_fields.into_iter() {
-    //         array_of_indexes.push(neighbour.index as usize)
-    //     }
-    //     adj_list.push(array_of_indexes);
-    // }
+    //CREATE GRAPH WITH TYPE Vec<Vec<usize>>
 
-    let mut graph: HashMap<usize, Vec<usize>> = HashMap::new();
-
+    let mut adj_list: Vec<Vec<usize>> = vec![];
     for field in labyrinth.clone().into_iter() {
-        let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field.clone());
+        let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field);
         let mut array_of_indexes = vec![];
         for neighbour in surrounding_fields.into_iter() {
             array_of_indexes.push(neighbour.index as usize)
         }
-        graph.insert(field.index as usize, array_of_indexes);
+        adj_list.push(array_of_indexes);
     }
+
+    //CREATE GRAPH WITH TYPE HashMap<usize, Vec<usize>>
+
+    // let mut graph: HashMap<usize, Vec<usize>> = HashMap::new();
+
+    // for field in labyrinth.clone().into_iter() {
+    //     let surrounding_fields = get_surrounding_fields(labyrinth.clone(), field.clone());
+    //     let mut array_of_indexes = vec![];
+    //     for neighbour in surrounding_fields.into_iter() {
+    //         array_of_indexes.push(neighbour.index as usize)
+    //     }
+    //     graph.insert(field.index as usize, array_of_indexes);
+    // }
 
     let mut shortest_paths = vec![];
     for exit in exit_fields.into_iter() {
-        //shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth))
-        shortest_paths.push(bfs_dynamic(&mut graph, labyrinth[0].index as usize, exit.index as usize))
+        //println!("Start: {:#?}", labyrinth[0]);
+        println!("ITERATION FOR EXIT FIELD {}", exit.index);
+        shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth.clone()))
+        //shortest_paths.push(bfs_dynamic(&mut graph, labyrinth[0].index as usize, exit.index as usize))
     }
     print!("{:#?}", shortest_paths);
+
+
+    //FIND EXIT WITH RANDOM FIELD SELECTION
+
     // while !current_field.is_exit {
     //     current_field.print();
     //     keys = pick_key_up(&mut labyrinth, &mut current_field, keys);
@@ -136,34 +138,52 @@ fn main() {
 }
 
 fn bfs(start: usize, end: usize, adj_list: &Vec<Vec<usize>>, labyrinth : &mut Vec<Field>) -> Option<(Vec<usize>, usize)> {
-    let mut visited = vec![false; adj_list.len()];
-    let mut queue = VecDeque::new();
+    let mut visited = vec![];
+    let mut queue: VecDeque<(usize, i32)> = VecDeque::new();
     let mut distances = vec![std::usize::MAX; adj_list.len()];
     let mut paths = vec![vec![]; adj_list.len()];
 
-    visited[start] = true;
-    queue.push_back(start);
+    visited.push((start, 0));
+    queue.push_back((start, 0));
     distances[start] = 0;
     paths[start] = vec![start];
-    let mut keys = 0;
+    //let mut keys = 0;
 
-    while let Some(vertex) = queue.pop_front() {
-        println!("Vertex {}", vertex);
-        let mut current_field = labyrinth[vertex].clone();
+    while let Some(mut vertex) = queue.pop_front() {
+        println!("Vertex {}, Keys {}", vertex.0, vertex.1);
+        let mut current_field = labyrinth[vertex.0].clone();
         let surrounding_fields = get_surrounding_fields(labyrinth.clone(), current_field.clone());
         let mut available_neighbors: Vec<usize> = vec![];
         let mut fields_with_doors: Vec<i32> = vec![];
 
-        keys = pick_key_up(labyrinth, &mut current_field, keys);
-        keys = unlock_door(labyrinth, &mut current_field, keys);
+        //let mut keys = vertex.1;
+        vertex.1 = pick_key_up(labyrinth, &mut current_field, vertex.1);
+        vertex.1 = unlock_door(labyrinth, &mut current_field, vertex.1);
 
+        //ADD ALREADY VISITED FIELDS WITH LOCKED DOORS
+        if vertex.1 > 0 {
+            for is_visited in visited.clone().into_iter() {
+                let mut has_locked_door = false;
+                //if field has locked door queue push back i
+                for path in labyrinth[is_visited.0].available_paths.clone().into_iter() {
+                    if path.has_door {
+                        has_locked_door = true;
+                    }
+                }
+                if has_locked_door {
+                    queue.push_back((is_visited.0, vertex.1));
+                }
+            }
+        }
+
+        //REMOVE ALL PATHS WITH LOCKED DOORS
         for (i, path) in current_field.available_paths.into_iter().enumerate() {
             if path.has_door {
                 fields_with_doors.push(surrounding_fields[i].index)
             }
         }
         if fields_with_doors.len() != 0 {
-            for index in adj_list[vertex].clone().into_iter() {
+            for index in adj_list[vertex.0].clone().into_iter() {
                 for field_index in fields_with_doors.clone() {
                     if field_index != index as i32 {
                         available_neighbors.push(index);
@@ -171,26 +191,28 @@ fn bfs(start: usize, end: usize, adj_list: &Vec<Vec<usize>>, labyrinth : &mut Ve
                 }
             }
         } else {
-            available_neighbors = adj_list[vertex].clone()
+            available_neighbors = adj_list[vertex.0].clone()
         }
-        // println!("{:#?}", current_field);
-        // println!("{:?}", available_neighbors);
-        for &neighbor in &available_neighbors {
-            if !visited[neighbor] {
-                println!("VISITED {}", neighbor);
-                visited[neighbor] = true;
-                distances[neighbor] = distances[vertex] + 1;
-                paths[neighbor] = paths[vertex].clone();
+        //println!("{:#?}", current_field);
+        //println!("{:?}", available_neighbors);
+        for neighbor in available_neighbors {
+            if !visited.contains(&(neighbor, vertex.1)) {
+                //println!("PUSH NA VISITED {}", neighbor);
+                visited.push((vertex.0, vertex.1));
+                visited.dedup();
+                distances[neighbor] = distances[vertex.0] + 1;
+                paths[neighbor] = paths[vertex.0].clone();
                 paths[neighbor].push(neighbor);
-                queue.push_back(neighbor);
+                queue.push_back((neighbor, vertex.1));
 
                 if neighbor == end {
+                    println!("{:?}", visited);
                     return Some((paths[end].clone(), distances[end]));
                 }
             }
         }
     }
-
+    println!("{:#?}", visited);
     None
 }
 
