@@ -3,8 +3,12 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-use std::fmt;
+use std::{fmt, thread};
 //use rand::Rng;
+use std::collections::{HashMap};
+use std::sync::{Mutex, Arc};
+use rayon;
+use rayon::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Direction {
@@ -106,14 +110,36 @@ fn main() {
     //     graph.insert(field.index as usize, array_of_indexes);
     // }
 
-    let mut shortest_paths = vec![];
-    for exit in exit_fields.into_iter() {
-        //println!("Start: {:#?}", labyrinth[0]);
-        println!("ITERATION FOR EXIT FIELD {}", exit.index);
-        shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth.clone()))
-        //shortest_paths.push(bfs_dynamic(&mut graph, labyrinth[0].index as usize, exit.index as usize))
+    let shortest_paths = Arc::new(Mutex::new(vec![]));
+
+    let mut handles = vec![];
+
+    for i in 0..exit_fields.clone().len() {
+        let shortest_paths = shortest_paths.clone();
+        let field = exit_fields[i].clone();
+        let maze = labyrinth.clone();
+        let adj_list = adj_list.clone();
+        let handle = thread::spawn(move || {
+            let mut results = shortest_paths.lock().unwrap();
+            results.push(bfs(maze[0].clone().index as usize, field.index as usize, &adj_list.clone(), &mut maze.clone()));
+        });
+        handles.push(handle);
     }
-    print!("{:#?}", shortest_paths);
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let results = shortest_paths.lock().unwrap();
+    println!("{:#?}", results);
+
+    // for exit in exit_fields.into_iter() {
+    //     //println!("Start: {:#?}", labyrinth[0]);
+    //     println!("ITERATION FOR EXIT FIELD {}", exit.index);
+    //     shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth.clone()))
+    //     //shortest_paths.push(bfs_dynamic(&mut graph, labyrinth[0].index as usize, exit.index as usize))
+    // }
+    // print!("{:#?}", shortest_paths);
 
 
     //FIND EXIT WITH RANDOM FIELD SELECTION
@@ -308,8 +334,6 @@ fn pick_key_up(labyrinth : &mut Vec<Field>, current_field: &mut Field, mut keys:
     keys
 }
 
-
-use std::collections::{HashMap};
 
 enum State {
     Visited,
