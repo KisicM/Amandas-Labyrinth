@@ -1,4 +1,3 @@
-//Mihajlo Kisic E259/2022
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, BufRead};
