@@ -4,10 +4,7 @@ use std::io::{self, BufRead};
 use std::path::Path;
 use std::{fmt, thread};
 //use rand::Rng;
-use std::collections::{HashMap};
 use std::sync::{Mutex, Arc};
-use rayon;
-use rayon::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Direction {
@@ -40,12 +37,6 @@ struct Field {
     has_key: bool,
     is_exit: bool,
     available_paths: Box<[AvailablePath]>
-}
-
-impl Field {
-    fn print(&self) {
-        println!("Field index: {},\nis_exit: {}\n", self.index, self.is_exit);
-    }       
 }
 
 fn main() {
@@ -109,12 +100,12 @@ fn main() {
     //     graph.insert(field.index as usize, array_of_indexes);
     // }
 
-    let shortest_paths = Arc::new(Mutex::new(vec![]));
+    let shared_var = Arc::new(Mutex::new(vec![]));
 
     let mut handles = vec![];
 
     for i in 0..exit_fields.clone().len() {
-        let shortest_paths = shortest_paths.clone();
+        let shortest_paths = shared_var.clone();
         let field = exit_fields[i].clone();
         let maze = labyrinth.clone();
         let adj_list = adj_list.clone();
@@ -129,17 +120,19 @@ fn main() {
         handle.join().unwrap();
     }
 
-    let results = shortest_paths.lock().unwrap();
-    println!("{:#?}", results);
-
-    // for exit in exit_fields.into_iter() {
-    //     //println!("Start: {:#?}", labyrinth[0]);
-    //     println!("ITERATION FOR EXIT FIELD {}", exit.index);
-    //     shortest_paths.push(bfs(labyrinth[0].index as usize, exit.index as usize, &adj_list, &mut labyrinth.clone()))
-    //     //shortest_paths.push(bfs_dynamic(&mut graph, labyrinth[0].index as usize, exit.index as usize))
-    // }
-    // print!("{:#?}", shortest_paths);
-
+    let results = shared_var.lock().unwrap();
+    let mut shortest_path = None;
+    if results[0] != None {
+        shortest_path = results[0].clone(); //initialize shortest path with first result
+    }
+    for (i, result) in results.clone().into_iter().enumerate() {
+        if result != None {
+            if result.unwrap().clone().1 < shortest_path.clone().unwrap().1 {
+                shortest_path = results[i].clone();
+            }
+        }        
+    }
+    println!("{:#?}", shortest_path.unwrap());
 
     //FIND EXIT WITH RANDOM FIELD SELECTION
 
@@ -175,7 +168,7 @@ fn bfs(start: usize, end: usize, adj_list: &Vec<Vec<usize>>, labyrinth : &mut Ve
     //let mut keys = 0;
 
     while let Some(mut vertex) = queue.pop_front() {
-        println!("Vertex {}, Keys {}", vertex.0, vertex.1);
+        //println!("Vertex {}, Keys {}", vertex.0, vertex.1);
         let mut current_field = labyrinth[vertex.0].clone();
         let surrounding_fields = get_surrounding_fields(labyrinth.clone(), current_field.clone());
         let mut available_neighbors: Vec<usize> = vec![];
@@ -231,13 +224,13 @@ fn bfs(start: usize, end: usize, adj_list: &Vec<Vec<usize>>, labyrinth : &mut Ve
                 queue.push_back((neighbor, vertex.1));
 
                 if neighbor == end {
-                    println!("{:?}", visited);
+                    //println!("{:?}", visited);
                     return Some((paths[end].clone(), distances[end]));
                 }
             }
         }
     }
-    println!("{:#?}", visited);
+    //println!("{:#?}", visited);
     None
 }
 
@@ -332,50 +325,3 @@ fn pick_key_up(labyrinth : &mut Vec<Field>, current_field: &mut Field, mut keys:
     }
     keys
 }
-
-
-enum State {
-    Visited,
-    Unvisited,
-}
-
-fn bfs_dynamic(graph: &mut HashMap<usize, Vec<usize>>, start: usize, end: usize) -> Option<(usize, Vec<usize>)> {
-    let mut distances = HashMap::new();
-    let mut parents = HashMap::new();
-    let mut queue = VecDeque::new();
-    let mut state = HashMap::new();
-
-    distances.insert(start, 0);
-    queue.push_back(start);
-    state.insert(start, State::Visited);
-
-    while !queue.is_empty() {
-        let vertex = queue.pop_front().unwrap();
-        if let Some(neighbors) = graph.get_mut(&vertex) {
-            for neighbor in neighbors {
-                if let Some(dist) = distances.get(&vertex) {
-                    if !distances.contains_key(&neighbor) {
-                        distances.insert(neighbor.clone(), dist + 1);
-                        parents.insert(neighbor.clone(), vertex);
-                        state.insert(neighbor.clone(), State::Visited);
-                        queue.push_back(neighbor.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    let mut current = end;
-    let mut path = vec![end];
-    while current != start {
-        current = match parents.get(&current) {
-            Some(p) => *p,
-            None => return None,
-        };
-        path.push(current);
-    }
-    path.reverse();
-
-    Some((distances[&end], path))
-}
-
